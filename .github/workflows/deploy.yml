@@ -25,9 +25,6 @@ jobs:
       # 3️⃣ Construir la aplicación con Maven (sin tests para deploy)
       - name: Build with Maven
         run: mvn clean package -DskipTests
-        # Si el pom.xml está en la raíz, no hace falta working-directory
-        # Si está en un subdirectorio, descomenta la línea siguiente y cambia 'demo' por tu carpeta
-        # working-directory: demo
 
       # 4️⃣ Copiar el archivo .war a la instancia EC2
       - name: Copy .war to EC2
@@ -36,7 +33,6 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          # Ajusta la ruta del WAR según dónde se genere
           source: target/demo-0.0.1-SNAPSHOT.war
           target: /home/ubuntu/
 
@@ -52,11 +48,9 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # 1️⃣ Crear setenv.sh para Tomcat con variables de entorno
+            # 1️⃣ Crear setenv.sh para Tomcat con variables como JAVA_OPTS
             sudo tee /usr/share/tomcat10/bin/setenv.sh > /dev/null <<EOF
-            export DB_ENDPOINT=$DB_ENDPOINT
-            export DB_USERNAME=$DB_USERNAME
-            export DB_PASSWORD=$DB_PASSWORD
+            export CATALINA_OPTS="\$CATALINA_OPTS -Dspring.datasource.url=$DB_ENDPOINT -Dspring.datasource.username=$DB_USERNAME -Dspring.datasource.password=$DB_PASSWORD"
             EOF
 
             # 2️⃣ Ajustar permisos
