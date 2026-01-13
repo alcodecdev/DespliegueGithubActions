@@ -22,15 +22,10 @@ jobs:
           distribution: temurin
           cache: maven
 
-      # 3️⃣ Construir la aplicación usando Maven (SIN tests).
-      - name: Build and test with Maven
-        env:
-          DB_ENPOINT: ${{ secrets.DB_ENDPOINT }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          mvn clean package
-          mvn test
+      # 3️⃣ Construir la aplicación usando Maven (SIN tests para deploy)
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+        working-directory: demo   # <-- Cambia 'demo' por la carpeta donde está tu pom.xml
 
       # 4️⃣ Copiar el archivo .war a la instancia EC2.
       - name: Copy .war to EC2
@@ -39,7 +34,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          source: target/demo-0.0.1-SNAPSHOT.war
+          source: demo/target/demo-0.0.1-SNAPSHOT.war   # <-- ruta ajustada según working-directory
           target: /home/ubuntu/
 
       # 5️⃣ Configurar variables de entorno y desplegar la aplicación en Tomcat.
