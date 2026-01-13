@@ -8,6 +8,8 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
+    # Definimos variables para que estén disponibles en el entorno de GitHub
     env:
       DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
       DB_USERNAME: ${{ secrets.DB_USERNAME }}
@@ -24,7 +26,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Maven
-        # Saltamos tests en el build para evitar el error de conexión en GitHub
+        # Usamos -DskipTests para que no falle el build en GitHub por falta de DB
         run: mvn clean package -DskipTests
 
       - name: Copy .war to EC2
@@ -44,17 +46,24 @@ jobs:
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # 1. Escribir en /etc/environment (Como pide tu práctica)
-            echo "DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}" | sudo tee -a /etc/environment
-            echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" | sudo tee -a /etc/environment
-            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | sudo tee -a /etc/environment
-
-            # 2. Forzar variables en el servicio Tomcat (Solución al error del Driver)
+            # 1. Crear configuración para que el SERVICIO Tomcat vea las variables
+            # Esto soluciona el error "Driver claims to not accept jdbcUrl"
             sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
-            echo -e "[Service]\nEnvironment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"\nEnvironment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"\nEnvironment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
+            
+            echo "[Service]
+            Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"
+            Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"
+            Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
 
-            # 3. Mover WAR y reiniciar
-            sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
-            sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
+            # 2. Recargar la configuración del sistema
             sudo systemctl daemon-reload
+
+            # 3. Mover el archivo .war a la carpeta de Tomcat
+            sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
+            
+            # 4. Ajustar permisos para que Tomcat pueda leer el archivo
+            sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
+            sudo chmod 755 /var/lib/tomcat10/webapps/demo.war
+
+            # 5. Reiniciar Tomcat para aplicar todos los cambios
             sudo systemctl restart tomcat10
