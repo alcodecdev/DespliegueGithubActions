@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     env:
       DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
       DB_USERNAME: ${{ secrets.DB_USERNAME }}
@@ -23,9 +24,11 @@ jobs:
           java-version: 21
           distribution: 'temurin'
 
-      - name: Build with Maven
-        # Saltamos tests para que el error de conexión no detenga el empaquetado
-        run: mvn clean package -DskipTests
+      - name: Build and test with Maven
+        # Ejecuta compilación y pruebas automáticas
+        run: |
+          mvn clean package
+          mvn test
 
       - name: Copy .war to EC2
         uses: appleboy/scp-action@v0.1.5
@@ -37,27 +40,27 @@ jobs:
           target: "/home/ubuntu/"
           strip_components: 1
 
-      - name: Configure and deploy
+      - name: Configure environment and deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # 1. Crear directorio si no existe y limpiar override anterior
+            # 1. Configurar variables persistentes
+            echo "DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}" | sudo tee -a /etc/environment
+            echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" | sudo tee -a /etc/environment
+            echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | sudo tee -a /etc/environment
+            
+            # 2. Configuración para el servicio Tomcat 10
             sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
-            sudo rm -f /etc/systemd/system/tomcat10.service.d/override.conf
+            echo "[Service]
+            Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"
+            Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"
+            Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
 
-            # 2. Escribir configuración limpia
-            echo "[Service]" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
-            echo "Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
-            echo "Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
-            echo "Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
-
-            # 3. Recargar y desplegar el WAR
+            # 3. Desplegar el WAR y reiniciar
             sudo systemctl daemon-reload
             sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
             sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
-            
-            # 4. Reiniciar Tomcat
             sudo systemctl restart tomcat10
