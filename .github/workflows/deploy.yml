@@ -25,7 +25,6 @@ jobs:
           distribution: 'temurin'
 
       - name: Build and test with Maven
-        # Ejecuta compilación y pruebas automáticas
         run: |
           mvn clean package
           mvn test
@@ -40,26 +39,23 @@ jobs:
           target: "/home/ubuntu/"
           strip_components: 1
 
-      - name: Configure environment and deploy
+      - name: Configure and deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # 1. Configurar variables persistentes
+            # Inyectar variables en el entorno del sistema
             echo "DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}" | sudo tee -a /etc/environment
             echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" | sudo tee -a /etc/environment
             echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | sudo tee -a /etc/environment
             
-            # 2. Configuración para el servicio Tomcat 10
+            # Forzar variables para el servicio Tomcat 10
             sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
-            echo "[Service]
-            Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"
-            Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"
-            Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
+            echo -e "[Service]\nEnvironment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"\nEnvironment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"\nEnvironment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
 
-            # 3. Desplegar el WAR y reiniciar
+            # Desplegar el archivo y reiniciar
             sudo systemctl daemon-reload
             sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
             sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
