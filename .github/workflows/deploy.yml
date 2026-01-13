@@ -8,8 +8,6 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
-    # Definimos variables para que estén disponibles en el entorno de GitHub
     env:
       DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
       DB_USERNAME: ${{ secrets.DB_USERNAME }}
@@ -26,7 +24,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Build with Maven
-        # Usamos -DskipTests para que no falle el build en GitHub por falta de DB
+        # Saltamos tests para que el error de conexión no detenga el empaquetado
         run: mvn clean package -DskipTests
 
       - name: Copy .war to EC2
@@ -39,31 +37,27 @@ jobs:
           target: "/home/ubuntu/"
           strip_components: 1
 
-      - name: Configure environment and deploy
+      - name: Configure and deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # 1. Crear configuración para que el SERVICIO Tomcat vea las variables
-            # Esto soluciona el error "Driver claims to not accept jdbcUrl"
+            # 1. Crear directorio si no existe y limpiar override anterior
             sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
-            
-            echo "[Service]
-            Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"
-            Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"
-            Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
+            sudo rm -f /etc/systemd/system/tomcat10.service.d/override.conf
 
-            # 2. Recargar la configuración del sistema
+            # 2. Escribir configuración limpia
+            echo "[Service]" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
+            echo "Environment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
+            echo "Environment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
+            echo "Environment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee -a /etc/systemd/system/tomcat10.service.d/override.conf
+
+            # 3. Recargar y desplegar el WAR
             sudo systemctl daemon-reload
-
-            # 3. Mover el archivo .war a la carpeta de Tomcat
             sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
-            
-            # 4. Ajustar permisos para que Tomcat pueda leer el archivo
             sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
-            sudo chmod 755 /var/lib/tomcat10/webapps/demo.war
-
-            # 5. Reiniciar Tomcat para aplicar todos los cambios
+            
+            # 4. Reiniciar Tomcat
             sudo systemctl restart tomcat10
