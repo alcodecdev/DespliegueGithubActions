@@ -39,6 +39,7 @@ jobs:
           target: "/home/ubuntu/"
           strip_components: 1
 
+
       - name: Configure and deploy
         uses: appleboy/ssh-action@master
         with:
