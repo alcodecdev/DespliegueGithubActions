@@ -23,8 +23,8 @@ jobs:
           java-version: 21
           distribution: 'temurin'
 
-      - name: Build and test with Maven
-        # Añadimos -DskipTests para evitar errores de conexión en la nube
+      - name: Build with Maven
+        # Saltamos tests en el build para evitar el error de conexión en GitHub
         run: mvn clean package -DskipTests
 
       - name: Copy .war to EC2
@@ -37,25 +37,24 @@ jobs:
           target: "/home/ubuntu/"
           strip_components: 1
 
-      - name: Configure environment variables and deploy
+      - name: Configure environment and deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            # Configurar variables de entorno en el EC2
+            # 1. Escribir en /etc/environment (Como pide tu práctica)
             echo "DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}" | sudo tee -a /etc/environment
             echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" | sudo tee -a /etc/environment
             echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" | sudo tee -a /etc/environment
-            
-            # Recargar variables
-            source /etc/environment
 
-            # Mover archivo y permisos
+            # 2. Forzar variables en el servicio Tomcat (Solución al error del Driver)
+            sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
+            echo -e "[Service]\nEnvironment=\"DB_ENDPOINT=${{ secrets.DB_ENDPOINT }}\"\nEnvironment=\"DB_USERNAME=${{ secrets.DB_USERNAME }}\"\nEnvironment=\"DB_PASSWORD=${{ secrets.DB_PASSWORD }}\"" | sudo tee /etc/systemd/system/tomcat10.service.d/override.conf
+
+            # 3. Mover WAR y reiniciar
             sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
             sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
-            sudo chmod 755 /var/lib/tomcat10/webapps/demo.war
-
-            # Reiniciar Tomcat
+            sudo systemctl daemon-reload
             sudo systemctl restart tomcat10
