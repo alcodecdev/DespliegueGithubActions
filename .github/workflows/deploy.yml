@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest                # El trabajo se ejecuta en Ubuntu.
 
     steps:
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
       # 1️⃣ Descargar el código fuente del repositorio.
       - name: Checkout source code
         uses: actions/checkout@v2
@@ -35,6 +39,8 @@ jobs:
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           source: target/demo-0.0.1-SNAPSHOT.war
           target: /home/ubuntu/
+
+
 
       # 5️⃣ Configurar variables de entorno y desplegar la aplicación en Tomcat.
       - name: Configure environment variables and deploy
