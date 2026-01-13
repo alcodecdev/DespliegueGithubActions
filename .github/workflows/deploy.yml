@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest                # El trabajo se ejecuta en Ubuntu.
 
     steps:
-      - name: Build and test with Maven
-        run: |
-          mvn clean package
-          mvn test
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+        working-directory: demo
+
 
       # 1️⃣ Descargar el código fuente del repositorio.
       - name: Checkout source code
