@@ -10,17 +10,6 @@ jobs:
     runs-on: ubuntu-latest                # El trabajo se ejecuta en Ubuntu.
 
     steps:
-      - name: Build and test with Maven
-        env:
-          DB_ENPOINT: ${{ secrets.DB_ENDPOINT }}
-          DB_USERNAME: ${{ secrets.DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        run: |
-          mvn clean package
-          mvn test
-
-
-
       # 1️⃣ Descargar el código fuente del repositorio.
       - name: Checkout source code
         uses: actions/checkout@v2
@@ -34,8 +23,14 @@ jobs:
           cache: maven
 
       # 3️⃣ Construir la aplicación usando Maven (SIN tests).
-      - name: Build with Maven
-        run: mvn clean package -DskipTests
+      - name: Build and test with Maven
+        env:
+          DB_ENPOINT: ${{ secrets.DB_ENDPOINT }}
+          DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        run: |
+          mvn clean package
+          mvn test
 
       # 4️⃣ Copiar el archivo .war a la instancia EC2.
       - name: Copy .war to EC2
