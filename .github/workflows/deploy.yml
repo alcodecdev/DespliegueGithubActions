@@ -44,29 +44,32 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          # CRUCIAL: Indicar qué variables de entorno inyectar en la sesión SSH
           envs: DB_ENDPOINT,DB_USERNAME,DB_PASSWORD
           script: |
-            # 1. Crear el archivo setenv.sh de forma segura
-            # Usamos comillas simples en EOF para que no intente expandir variables localmente
-            sudo bash -c "cat << 'EOF' > /usr/share/tomcat10/bin/setenv.sh
-            export CATALINA_OPTS=\"\$CATALINA_OPTS -Dspring.datasource.url=$DB_ENDPOINT -Dspring.datasource.username=$DB_USERNAME -Dspring.datasource.password=$DB_PASSWORD\"
+          # 1. Crear el directorio de configuración si no existe
+            sudo mkdir -p /etc/systemd/system/tomcat10.service.d/
+          
+          # 2. Escribir el archivo de override
+          # Usamos comillas simples en EOF para que las variables se expandan con los valores de 'envs'
+            sudo bash -c "cat <<EOF > /etc/systemd/system/tomcat10.service.d/vars.conf
+            [Service]
+            Environment=\"DB_ENDPOINT=$DB_ENDPOINT\"
+            Environment=\"DB_USERNAME=$DB_USERNAME\"
+            Environment=\"DB_PASSWORD=$DB_PASSWORD\"
             EOF"
-
-            # 2. Dar permisos correctos al archivo de configuración
-            sudo chmod +x /usr/share/tomcat10/bin/setenv.sh
-            sudo chown tomcat:tomcat /usr/share/tomcat10/bin/setenv.sh
-            
-            # 3. Limpiar despliegues anteriores
+          
+          # 3. Recargar la configuración del sistema
+            sudo systemctl daemon-reload
+          
+          # 4. Limpieza del WAR anterior
             sudo rm -rf /var/lib/tomcat10/webapps/demo
             sudo rm -f /var/lib/tomcat10/webapps/demo.war
-            
-            # 4. Mover el nuevo WAR (scp-action mantiene la ruta relativa, por eso usamos target/...)
+          
+          # 5. Mover el WAR nuevo
             sudo mv /home/ubuntu/target/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
-            
-            # 5. Ajustar permisos del WAR y reiniciar Tomcat
+          
+          # 6. Permisos y reinicio
             sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
-            sudo chmod 644 /var/lib/tomcat10/webapps/demo.war
             sudo systemctl restart tomcat10
         env:
           DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
