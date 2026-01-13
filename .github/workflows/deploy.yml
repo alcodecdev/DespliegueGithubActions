@@ -10,50 +10,65 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Descargar el código fuente del repositorio
+      # 1️⃣ Descargar el código fuente
       - name: Checkout source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       # 2️⃣ Configurar JDK 21
       - name: Set up JDK 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          java-version: 21
-          distribution: temurin
+          java-version: '21'
+          distribution: 'temurin'
           cache: maven
 
-      # 3️⃣ Construir la aplicación con Maven (sin tests para deploy)
+      # 3️⃣ Construir la aplicación (generar el .war)
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
       # 4️⃣ Copiar el archivo .war a la instancia EC2
       - name: Copy .war to EC2
-        uses: appleboy/scp-action@v0.1.5
+        uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
-          source: target/demo-0.0.1-SNAPSHOT.war
-          target: /home/ubuntu/
+          # El archivo generado por Maven suele estar en target/
+          source: "target/demo-0.0.1-SNAPSHOT.war"
+          target: "/home/ubuntu/"
 
-      # 5️⃣ Configurar variables de entorno y desplegar la aplicación en Tomcat
+      # 5️⃣ Configurar variables de entorno y desplegar en Tomcat
       - name: Configure environment variables and deploy
         uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          # CRUCIAL: Indicar qué variables de entorno inyectar en la sesión SSH
+          envs: DB_ENDPOINT,DB_USERNAME,DB_PASSWORD
+          script: |
+            # 1. Crear el archivo setenv.sh de forma segura
+            # Usamos comillas simples en EOF para que no intente expandir variables localmente
+            sudo bash -c "cat << 'EOF' > /usr/share/tomcat10/bin/setenv.sh
+            export CATALINA_OPTS=\"\$CATALINA_OPTS -Dspring.datasource.url=$DB_ENDPOINT -Dspring.datasource.username=$DB_USERNAME -Dspring.datasource.password=$DB_PASSWORD\"
+            EOF"
+
+            # 2. Dar permisos correctos al archivo de configuración
+            sudo chmod +x /usr/share/tomcat10/bin/setenv.sh
+            sudo chown tomcat:tomcat /usr/share/tomcat10/bin/setenv.sh
+            
+            # 3. Limpiar despliegues anteriores
+            sudo rm -rf /var/lib/tomcat10/webapps/demo
+            sudo rm -f /var/lib/tomcat10/webapps/demo.war
+            
+            # 4. Mover el nuevo WAR (scp-action mantiene la ruta relativa, por eso usamos target/...)
+            sudo mv /home/ubuntu/target/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
+            
+            # 5. Ajustar permisos del WAR y reiniciar Tomcat
+            sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
+            sudo chmod 644 /var/lib/tomcat10/webapps/demo.war
+            sudo systemctl restart tomcat10
         env:
           DB_ENDPOINT: ${{ secrets.DB_ENDPOINT }}
           DB_USERNAME: ${{ secrets.DB_USERNAME }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME }}
-          key: ${{ secrets.EC2_PRIVATE_KEY }}
-          script: |
-            sudo bash -c "cat > /usr/share/tomcat10/bin/setenv.sh <<EOF export CATALINA_OPTS=\"\$CATALINA_OPTS -Dspring.datasource.url=$DB_ENDPOINT -Dspring.datasource.username=$DB_USERNAME -Dspring.datasource.password=$DB_PASSWORD\"EOF"
-            sudo chmod +x /usr/share/tomcat10/bin/setenv.sh
-            sudo chown tomcat:tomcat /usr/share/tomcat10/bin/setenv.sh
-            
-            sudo rm -rf /var/lib/tomcat10/webapps/demo
-            sudo mv /home/ubuntu/demo-0.0.1-SNAPSHOT.war /var/lib/tomcat10/webapps/demo.war
-            sudo chown tomcat:tomcat /var/lib/tomcat10/webapps/demo.war
-            sudo chmod 644 /var/lib/tomcat10/webapps/demo.war
-            sudo systemctl restart tomcat10
